@@ -35,6 +35,9 @@ UUID_Tunnel  = "67b7a1d1-fd7b-11e4-b939-0800200c9a66"
 
 #socket du serveur
 socketServeur = None
+#recherches
+rechercheEnCours = {}
+
 
 ## classe
 
@@ -57,7 +60,7 @@ class SocketServeur(bluetooth.BluetoothSocket):
         # en file d'attente au maximum
         self.listen(1)
         # averti le serveur SDP de la présence du serveur
-        bluetooth.advertise_service( self, "Packet",uuid,[uuid])
+        bluetooth.advertise_service( self, "Paquet",uuid,[uuid])
         #initialise la liste des connections
         self.connections = []
     
@@ -79,19 +82,41 @@ class SocketServeur(bluetooth.BluetoothSocket):
             tampon += dat
             #recupère la taille requise
             if ":" in tampon and not tailleMessage:
-                l = tampon.split(":")
-                tailleMessage = int(l[0])
-                tampon = l[1]
+                p = tampon.find(";")
+                tailleMessage = int(l[:p])
+                tampon = l[p:]
             #attend d'avoir reçu un paquet entier
             if tailleMessage:
                 if len( tampon ) >= tailleMessage:
                     self.utilisePaquet(sock,tampon[:tailleMessage])
                     tampon = tampon[tailleMessage:]
-    
+        
     def utilisePaquet(self,sender,dat):
         """
             interprète les données d'un paquet reçu
         """
+        print("recu paquet:\n",dat)
+        liste = dat.split(",")
+        if liste[0] == "decouverte":
+            pass
+    
+    def envoiePaquet(self,dest,dat):
+        """
+            Permet d'envoyer un paquet de donnée à un destinataire
+            
+            :param dest: tuple de le forme (host,channel)
+        """
+        #trouve la taille du paquet
+        tailleMessage = len(dat.toBytes())
+        #crée le paquet
+        message = str(tailleMessage) + ";" + dat
+        #ouvre une connection
+        sock = bluetooth.BluetoothSocket( bluetooth.RFCOMM )
+        sock.connect( dest )
+        #envoie le message
+        sock.send(message)
+        #ferme la connection
+        sock.close()
     
     def close(self):
         """
@@ -146,12 +171,29 @@ def decouverteReseau(periph,time=5):
               affecte à chaque periphérique actif une liste
               d'autres périphériques qu'il peut atteindre
         
+        Il est possible que cette recherche prenne du temps
+        la démarrer dans un autre thread?
+        
         :param periph: liste des périphériques déjà découverts
                        sous forme d'adresse MAC
         :param time: temps maximum de la recherche
         
         :return: None
     """
+    #recherche les périphériques à proximité qui ont ce programme
+    liste = bluetooth.find_service("Paquet",UUID_serveur)
+    liste = [ i["host"] for i in liste ]
+    #ajoute l'adresse actuelle à la liste
+    liste.append( socketServeur.getpeername() )
+    #supprime les éléments déjà inspectés
+    for item in liste:
+        if item[0] in periph:
+            liste.remove(item)
+    #crée l'argument du paquet de recherche
+    arg = ",".join( [ item[0] + "/" + str(item[1]) for item in liste ] )
+    #demande aux periphériques d'effectuer leur recherche
+    for add in list:
+        socketServeur.envoiePaquet( add , "decouverte," + arg )
 
 def listeComplet():
     """
