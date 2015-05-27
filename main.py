@@ -62,18 +62,20 @@ from tkinter import *
 
 # uuid des services serveur et client
 UUID_Serveur = "67b7a1d0-fd7b-11e4-b939-0800200c9a66"
-UUID_Tunnel  = "67b7a1d1-fd7b-11e4-b939-0800200c9a66"
+#UUID_Tunnel  = "67b7a1d1-fd7b-11e4-b939-0800200c9a66"
 
 ##  variables
 
 #socket du serveur
 socketServeur = None
-#recherches
+#périphériques directs
 peripheriquesContactables = []
 peripheriquesAdjacents = []
-rechercheLancees = 0
 #mappage réseau à partir de ce point
 mappageReseau = {}
+#recherche
+rechercheLancees = 0
+origineRecherche = ""
 
 ## classe
 
@@ -136,7 +138,20 @@ class SocketServeur(bluetooth.BluetoothSocket):
         if liste[0] == "decouverte":
             #demande de découverte réseau en profondeur
             addresses = [ ( i.split("/")[0] , int(i.split("/")[1]) ) for i in liste[1:] ]
-            decouverteReseau(adresses)
+            decouverteReseau(sender,adresses)
+        elif liste[0] == "recherche":
+            #demande de recherche réseau en profondeur
+            addresses = [ ( i.split("/")[0] , int(i.split("/")[1]) ) for i in liste[1:] ]
+            rechercheReseau(adresses)
+        elif liste[0] == "reponse":
+            #réponse à une recherche réseau
+            #point de départ du retour
+            addStart = sender.getsockname()[0]
+            #récupère les autres infos
+            info = dat[8 + info[8:].find(",") : ]
+            items = infos.split(";")
+            #envoie ce paquet traité
+            reponseRecherche(addStart,items)
     
     def envoiePaquet(self,dest,dat):
         """
@@ -222,7 +237,7 @@ def mappagereseau():
     pass
 
 
-def decouverteReseau(periph):
+def decouverteReseau(periph=[]):
     """
         Permet d'accéder à tous les périphériques à proximité qui
         possèdent le service de réseau actif, et leurs demander
@@ -263,7 +278,7 @@ def decouverteReseau(periph):
     for add in liste:
         socketServeur.envoiePaquet( add , "decouverte," + arg )
     #effectue une recherche locale
-    local = listeStandard(time)
+    local = rechercheStandard()
     #affecte à la liste locale
     global peripheriquesAdjacents
     peripheriquesAdjacents = liste
@@ -272,7 +287,7 @@ def mappageDepuisListes():
     """
         Met à jour le mappage, à partir des liste de connections disponibles
     """
-    for p in peripheriquesAdjacent:
+    for p in peripheriquesAdjacents:
         #crée un nouvel élément
         item = { "nom": bluetooth.lookup_name(p) ,
                  "direct": True ,
@@ -284,7 +299,41 @@ def mappageDepuisListes():
         #ajout au mappage
         mappageReseau[p] = item
 
-def rechercheReseau(periph):
+def mappageDepuisStr(str,origine):
+    """
+        ajoute des périphériques au réseau à partir d'une chaine de
+        caractère. Prend comme point de réduction de ces périphériques
+        l'adresse "origine"
+    """
+    #sépare les infos
+    infos = str.split(",")
+    add = infos[0]
+    nom = infos[1]
+    direct = bool( infos[2] )
+    avance = bool( infos[3] )
+    liens = infos[4][1:-1]
+    #trouve l'élément d'origine
+    if origine in mappageReseau.keys():
+        oItem = mappageReseau[add]
+    else:
+        oItem = {}
+    if direct:
+        if not add in oItem["liens"]:
+            oItem["liens"].append(add)
+    #trouve l'élément spécifié
+    if add in mappageReseau.keys():
+        item = mappageReseau[add]
+    else:
+        item = {"liens":[]}
+    #mise à jour des infos
+    item["nom"] = nom
+    item["direct"] = add in peripheriquesAdjacents
+    item["avance"] = avance
+    for l in liens:
+        if not l in item["liens"]:
+            item["liens"].append(l)
+
+def rechercheReseau(origine="",periph=[]):
     """
         Permet d'accéder à tous les périphériques à proximité qui
         possèdent le service de réseau actif, et leurs demander
@@ -325,14 +374,44 @@ def rechercheReseau(periph):
     global rechercheLancees
     rechercheLancee = 0
     for add in liste:
-        socketServeur.envoiePaquet( add , "decouverte," + arg )
+        socketServeur.envoiePaquet( add , "recherche," + arg )
         rechercheLancees += 1
     #effectue une recherche locale
-    local = listeStandard() #mappage màj en mm temps
+    local = rechercheStandard() #mappage màj en mm temps
     #attends les réponses
     print("attends retour...")
     while rechercheLancees > 0:
         time.sleep(0.1)
+    #retourne à l'envoyeur
+    if origine != "":
+        #crée une chaine de réponse
+        argAdj = ";".join( [ strDepuisMappage(a) for a in mappageReseau.keys() ] )
+        #envoie cette réponse
+        socketServeur.envoiePaquet(origine,"reponse," + arg )
+
+def strDepuisMappage(address):
+    """
+        donne la représentation sous forme de chaine de caractère
+        d'un objet du mappage
+    """
+    item = mappageReseau[address]
+    #infos de base
+    str = address+","+item["nom"]+","+str(int(item["direct"]))+","+str(int(item["avance"]))
+    #liens
+    str += ",[" + ".".join( item["liens"] ) + "]"
+    
+    return str
+
+def reponseRecherche(origine,items):
+    """
+        traite les informations relatives à un retour de recherche
+    """
+    #réponse à une recherche
+    global rechercheLancees
+    rechercheLancees -= 1
+    #ajout des items au mappage
+    for i in items:
+        mappageDepuisStr(i,origine)
 
 ## début du programme
 
@@ -379,7 +458,7 @@ while continuer:
         else:
             if k == 1:
                 #demande à chaque périphérique de découvrir son réseau
-                decouverteReseau([])
+                decouverteReseau()
             elif k == 2:
                 #découverte bluetooth standard
                 liste = rechercheStandard()
