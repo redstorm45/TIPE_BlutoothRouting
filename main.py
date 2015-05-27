@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+
 """
 
     Ce projet est un essai de routage similaire à celui du web,
@@ -51,6 +52,11 @@
 import bluetooth
 import threading
 import time
+from tkinter import *
+
+
+
+
 
 ##  paramètres du programme
 
@@ -208,6 +214,13 @@ def rechercheStandard():
     mappageDepuisListes()
     #retourne la liste nommée
     return periph
+    
+def rechercheAvancee():
+    pass
+    
+def mappagereseau():
+    pass
+
 
 def decouverteReseau(periph):
     """
@@ -331,6 +344,13 @@ main = threading.Thread(target = bouclePrincipale)
 main.daemon = True
 main.start()
 
+
+#creation de la fenetre
+
+fenetre = Tk()
+
+menu(fenetre)
+"""
 #boucle principale
 continuer = True
 while continuer:
@@ -373,8 +393,27 @@ while continuer:
             elif k == 5:
                 #quitter :-(
                 continuer = False
-
+"""
 #ferme le serveur
 socketServeur.close()
+
+
+## Interface graphique
+
+def menu(fenetre):
+    choix1 = Button(fenetre, text = "découverte", command = lambda: decouverteReseau([]))
+    choix2 = Button(fenetre, text = "recherche standard", command = lambda: rechercheStandard())
+    choix3 = Button(fenetre, text = "recherche avancée", command = lambda: rechercheAvancee())
+    choix4 = Button(fenetre, text = "mappage reseau", command = lambda: mappagereseau())
+    choix5 = Button(fenetre, text = "quitter", command = fenetre.quit)
+    choix1.pack()
+    choix2.pack()
+    choix3.pack()
+    choix4.pack()
+    choix5.pack()
+    fenetre.mainloop()
+    
+
+
 
 
