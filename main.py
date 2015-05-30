@@ -53,7 +53,7 @@ import bluetooth
 import threading
 import time
 from tkinter import *
-
+import tkinter.ttk as ttk
 
 
 
@@ -223,6 +223,7 @@ def rechercheStandard():
     #variable interne
     global enCours_rechercheStandard
     enCours_rechercheStandard = True
+    majCouleurs()
     #effectue une recherche
     pairs = bluetooth.discover_devices()
     #associe les noms
@@ -236,8 +237,9 @@ def rechercheStandard():
     mappageDepuisListes()
     #màj variable interne
     enCours_rechercheStandard = False
+    majCouleurs()
     #retourne la liste nommée
-    print(periph)
+    print("recherche std:",periph)
     return periph
 
 def decouverteReseau(periph=[]):
@@ -261,6 +263,10 @@ def decouverteReseau(periph=[]):
         
         :return: None
     """
+    #variable interne
+    global enCours_decouverteReseau
+    enCours_decouverteReseau = True
+    majCouleurs()
     #recherche les périphériques à proximité qui ont ce programme
     print("trouve le service")
     liste = bluetooth.find_service("Paquet",UUID_Serveur)
@@ -286,8 +292,8 @@ def decouverteReseau(periph=[]):
     global peripheriquesAdjacents
     peripheriquesAdjacents = liste
     #variables d'état
-    global enCours_decouverteReseau
     enCours_decouverteReseau = False
+    majCouleurs()
 
 def mappageDepuisListes():
     """
@@ -304,6 +310,8 @@ def mappageDepuisListes():
             item["liens"] = mappageReseau[p]["liens"]
         #ajout au mappage
         mappageReseau[p] = item
+    #réaffiche la liste
+    majListe()
 
 def mappageDepuisStr(str,origine):
     """
@@ -338,6 +346,8 @@ def mappageDepuisStr(str,origine):
     for l in liens:
         if not l in item["liens"]:
             item["liens"].append(l)
+    #réaffiche la liste
+    majListe()
 
 def rechercheReseau(origine="",periph=[]):
     """
@@ -363,6 +373,7 @@ def rechercheReseau(origine="",periph=[]):
     #variable interne
     global enCours_rechercheReseau
     enCours_rechercheReseau = True
+    majCouleurs()
     #recherche les périphériques à proximité qui ont ce programme
     print("trouve le service")
     liste = bluetooth.find_service("Paquet",UUID_Serveur)
@@ -399,6 +410,7 @@ def rechercheReseau(origine="",periph=[]):
         socketServeur.envoiePaquet(origine,"reponse," + arg )
     #màj variable interne
     enCours_rechercheReseau = False
+    majCouleurs()
 
 def strDepuisMappage(address):
     """
@@ -434,44 +446,128 @@ enCours_decouverteReseau = False
 enCours_rechercheStandard = False
 enCours_rechercheReseau = False
 enCours_affichageReseau = False
+#interface initialisé
+interfaceInitialise = False
+#objets de l'interface
+bt_decouverte = None
+bt_rechercheStd = None
+bt_rechercheAv = None
+bt_affichage = None
+bt_quitter = None
+liste_peripheriques = None
 
 #fonctions de lancement de threads
 def startDecouverteReseau():
-    global enCours_decouverteReseau
-    if not enCours_decouverteReseau:
-        enCours_decouverteReseau = True
-        t = threading.Thread( target = decouverteReseau )
-        t.daemon = True
-        t.start()
+    """
+        démarre un thread de découverte du réseau
+    """
+    if interfaceInitialise:
+        global enCours_decouverteReseau
+        if not enCours_decouverteReseau:
+            enCours_decouverteReseau = True
+            bt_decouverte.configure(bg="yellow")
+            t = threading.Thread( target = decouverteReseau )
+            t.daemon = True
+            t.start()
+        majCouleurs()
 
 def startRechercheStandard():
-    global enCours_rechercheStandard
-    if not enCours_rechercheStandard:
-        enCours_rechercheStandard = True
-        t = threading.Thread( target = rechercheStandard )
-        t.daemon = True
-        t.start()
+    """
+        démarre un thread de recherche standard
+    """
+    if interfaceInitialise:
+        global enCours_rechercheStandard
+        if not enCours_rechercheStandard:
+            enCours_rechercheStandard = True
+            t = threading.Thread( target = rechercheStandard )
+            t.daemon = True
+            t.start()
+        majCouleurs()
         
 def startRechercheReseau():
-    global enCours_rechercheReseau
-    if not enCours_rechercheReseau:
-        enCours_rechercheReseau = True
-        t = threading.Thread( target = rechercheReseau )
-        t.daemon = True
-        t.start()
+    """
+        démarre un thread de recherche réseau
+    """
+    if interfaceInitialise:
+        global enCours_rechercheReseau
+        if not enCours_rechercheReseau:
+            enCours_rechercheReseau = True
+            t = threading.Thread( target = rechercheReseau )
+            t.daemon = True
+            t.start()
+        majCouleurs()
+
+#fonctions de mise à jour des widgets
+def majCouleurs():
+    """
+        met à jour les couleurs des boutons
+        en fonctions des activités en cours
+    """
+    if interfaceInitialise:
+        global enCours_decouverteReseau,bt_decouverte
+        if enCours_decouverteReseau:
+            bt_decouverte.configure(bg="yellow")
+        else:
+            bt_decouverte.configure(bg="SystemButtonFace")
+            
+        global enCours_rechercheStandard,bt_rechercheStd
+        if enCours_rechercheStandard:
+            bt_rechercheStd.configure(bg="yellow")
+        else:
+            bt_rechercheStd.configure(bg="SystemButtonFace")
+            
+        global enCours_rechercheReseau,bt_rechercheAv
+        if enCours_rechercheReseau:
+            bt_rechercheAv.configure(bg="yellow")
+        else:
+            bt_rechercheAv.configure(bg="SystemButtonFace")
+
+def majListe():
+    if interfaceInitialise:
+        global liste_peripheriques
+        #supprime tous les éléments
+        e = liste_peripheriques.get_children()
+        for i in e:
+            liste_peripheriques.delete(i)
+        #recrée tous les éléments
+        for k in mappageReseau.keys():
+            item = mappageReseau[k]
+            type = "normal"
+            if item["avance"]:
+                type = "avancé"
+            liste_peripheriques.insert('',"end",values=(k,item["nom"],type ) )
 
 #crée la fenètre
 def menu(fenetre):
-    choix1 = Button(fenetre, text = "découverte", command = startDecouverteReseau)
-    choix2 = Button(fenetre, text = "recherche standard", command = startRechercheStandard)
-    choix3 = Button(fenetre, text = "recherche avancée", command = startRechercheReseau())
-    choix4 = Button(fenetre, text = "mappage reseau", command = lambda: afficheReseau())
-    choix5 = Button(fenetre, text = "quitter", command = fenetre.quit)
-    choix1.pack()
-    choix2.pack()
-    choix3.pack()
-    choix4.pack()
-    choix5.pack()
+    #variables
+    global bt_decouverte
+    global bt_rechercheStd
+    global bt_rechercheAv
+    global bt_affichage
+    global bt_quitter
+    global liste_peripheriques
+    #création des boutons
+    bt_decouverte = Button(fenetre, text = "Découverte", command = startDecouverteReseau)
+    bt_rechercheStd = Button(fenetre, text = "Recherche standard", command = startRechercheStandard)
+    bt_rechercheAv = Button(fenetre, text = "Recherche avancée", command = startRechercheReseau())
+    bt_affichage = Button(fenetre, text = "Mappage reseau", command = lambda: afficheReseau())
+    bt_quitter = Button(fenetre, text = "Quitter", command = fenetre.quit)
+    #création de la vue sous-forme de liste
+    liste_peripheriques = ttk.Treeview(fenetre, columns = ("addresse","nom","type"),show = "headings")
+    liste_peripheriques.heading("addresse",text = "adresse")
+    liste_peripheriques.heading("nom",text = "nom")
+    liste_peripheriques.heading("type",text = "type")
+    #ajout à la fenètre
+    bt_decouverte.pack()
+    bt_rechercheStd.pack()
+    bt_rechercheAv.pack()
+    bt_affichage.pack()
+    bt_quitter.pack()
+    liste_peripheriques.pack()
+    #variable d'état
+    global interfaceInitialise
+    interfaceInitialise = True
+    #affichage à l'écran
     fenetre.mainloop()
     
 ## début du programme
