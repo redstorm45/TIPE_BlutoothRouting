@@ -101,6 +101,8 @@ class SocketServeur(bluetooth.BluetoothSocket):
         bluetooth.advertise_service( self, "Paquet",uuid,[uuid])
         #initialise la liste des connections
         self.connections = []
+        #variable interne
+        self.actif = True
     
     def serveurDataThread(self,sock):
         """
@@ -175,6 +177,8 @@ class SocketServeur(bluetooth.BluetoothSocket):
         """
             ferme le socket serveur et arrête le service attaché
         """
+        #change la variable interne
+        self.actif = False
         #arrête la pub
         bluetooth.stop_advertising( self )
         #ferme le socket
@@ -201,7 +205,7 @@ def bouclePrincipale():
     #récupère la variable
     global socketServeur
     #boucle
-    while True:
+    while socketServeur.actif:
         #attend des connections
         extSocket , address = socketServeur.accept()
         #ajoute la connection à la liste actuelle
@@ -216,6 +220,9 @@ def rechercheStandard():
         Effectue une recherche rapide (sans contacter
         les autres périphériques)
     """
+    #variable interne
+    global enCours_rechercheStandard
+    enCours_rechercheStandard = True
     #effectue une recherche
     pairs = bluetooth.discover_devices()
     #associe les noms
@@ -227,15 +234,11 @@ def rechercheStandard():
     peripheriquesAdjacents  = pairs[:]
     #met à jour le mappage
     mappageDepuisListes()
+    #màj variable interne
+    enCours_rechercheStandard = False
     #retourne la liste nommée
+    print(periph)
     return periph
-    
-def rechercheAvancee():
-    pass
-    
-def mappagereseau():
-    pass
-
 
 def decouverteReseau(periph=[]):
     """
@@ -282,6 +285,9 @@ def decouverteReseau(periph=[]):
     #affecte à la liste locale
     global peripheriquesAdjacents
     peripheriquesAdjacents = liste
+    #variables d'état
+    global enCours_decouverteReseau
+    enCours_decouverteReseau = False
 
 def mappageDepuisListes():
     """
@@ -354,6 +360,9 @@ def rechercheReseau(origine="",periph=[]):
         
         :return: None
     """
+    #variable interne
+    global enCours_rechercheReseau
+    enCours_rechercheReseau = True
     #recherche les périphériques à proximité qui ont ce programme
     print("trouve le service")
     liste = bluetooth.find_service("Paquet",UUID_Serveur)
@@ -388,6 +397,8 @@ def rechercheReseau(origine="",periph=[]):
         argAdj = ";".join( [ strDepuisMappage(a) for a in mappageReseau.keys() ] )
         #envoie cette réponse
         socketServeur.envoiePaquet(origine,"reponse," + arg )
+    #màj variable interne
+    enCours_rechercheReseau = False
 
 def strDepuisMappage(address):
     """
@@ -413,6 +424,56 @@ def reponseRecherche(origine,items):
     for i in items:
         mappageDepuisStr(i,origine)
 
+def afficheReseau():
+    pass
+
+## Interface graphique
+
+#variables d'état : action en cours
+enCours_decouverteReseau = False
+enCours_rechercheStandard = False
+enCours_rechercheReseau = False
+enCours_affichageReseau = False
+
+#fonctions de lancement de threads
+def startDecouverteReseau():
+    global enCours_decouverteReseau
+    if not enCours_decouverteReseau:
+        enCours_decouverteReseau = True
+        t = threading.Thread( target = decouverteReseau )
+        t.daemon = True
+        t.start()
+
+def startRechercheStandard():
+    global enCours_rechercheStandard
+    if not enCours_rechercheStandard:
+        enCours_rechercheStandard = True
+        t = threading.Thread( target = rechercheStandard )
+        t.daemon = True
+        t.start()
+        
+def startRechercheReseau():
+    global enCours_rechercheReseau
+    if not enCours_rechercheReseau:
+        enCours_rechercheReseau = True
+        t = threading.Thread( target = rechercheReseau )
+        t.daemon = True
+        t.start()
+
+#crée la fenètre
+def menu(fenetre):
+    choix1 = Button(fenetre, text = "découverte", command = startDecouverteReseau)
+    choix2 = Button(fenetre, text = "recherche standard", command = startRechercheStandard)
+    choix3 = Button(fenetre, text = "recherche avancée", command = startRechercheReseau())
+    choix4 = Button(fenetre, text = "mappage reseau", command = lambda: afficheReseau())
+    choix5 = Button(fenetre, text = "quitter", command = fenetre.quit)
+    choix1.pack()
+    choix2.pack()
+    choix3.pack()
+    choix4.pack()
+    choix5.pack()
+    fenetre.mainloop()
+    
 ## début du programme
 
 #démarre le serveur
@@ -423,74 +484,14 @@ main = threading.Thread(target = bouclePrincipale)
 main.daemon = True
 main.start()
 
-
 #creation de la fenetre
-
 fenetre = Tk()
 
 menu(fenetre)
-"""
-#boucle principale
-continuer = True
-while continuer:
-    print("   **** MENU ****   ")
-    print(" 1) découverte:")
-    print("     demande à chaque périphérique du réseau")
-    print("     d'effectuer une recherche")
-    print(" 2) recherche standard:")
-    print("     trouve tous les périphériques contactables")
-    print("     à proximité")
-    print(" 3) recherche avancée:")
-    print("     trouve tous les périphériques contactables")
-    print("     à travers le réseau")
-    print(" 4) mappage réseau:")
-    print("     affiche une carte du réseau")
-    print(" 5) quitter")
-    
-    k = input(":")
-    try:
-        k = int(k)
-    except:
-        print("\nentrez un nombre...\n")
-    else:
-        if k < 1 or k > 4:
-            print("\nentrez un vrai choix\n")
-        else:
-            if k == 1:
-                #demande à chaque périphérique de découvrir son réseau
-                decouverteReseau()
-            elif k == 2:
-                #découverte bluetooth standard
-                liste = rechercheStandard()
-                print(liste)
-            elif k == 3:
-                #découverte bluetooth avancée
-                rechercheReseau()
-            elif k == 4:
-                #cherche les amis, pour donner une carte
-                pass
-            elif k == 5:
-                #quitter :-(
-                continuer = False
-"""
+
 #ferme le serveur
 socketServeur.close()
 
-
-## Interface graphique
-
-def menu(fenetre):
-    choix1 = Button(fenetre, text = "découverte", command = lambda: decouverteReseau([]))
-    choix2 = Button(fenetre, text = "recherche standard", command = lambda: rechercheStandard())
-    choix3 = Button(fenetre, text = "recherche avancée", command = lambda: rechercheAvancee())
-    choix4 = Button(fenetre, text = "mappage reseau", command = lambda: mappagereseau())
-    choix5 = Button(fenetre, text = "quitter", command = fenetre.quit)
-    choix1.pack()
-    choix2.pack()
-    choix3.pack()
-    choix4.pack()
-    choix5.pack()
-    fenetre.mainloop()
     
 
 
