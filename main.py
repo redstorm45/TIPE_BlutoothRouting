@@ -448,6 +448,7 @@ enCours_rechercheReseau = False
 enCours_affichageReseau = False
 #interface initialisé
 interfaceInitialise = False
+
 #objets de l'interface
 bt_decouverte = None
 bt_rechercheStd = None
@@ -465,7 +466,6 @@ def startDecouverteReseau():
         global enCours_decouverteReseau
         if not enCours_decouverteReseau:
             enCours_decouverteReseau = True
-            bt_decouverte.configure(bg="yellow")
             t = threading.Thread( target = decouverteReseau )
             t.daemon = True
             t.start()
@@ -557,13 +557,15 @@ def menu(fenetre):
     liste_peripheriques.heading("addresse",text = "adresse")
     liste_peripheriques.heading("nom",text = "nom")
     liste_peripheriques.heading("type",text = "type")
+    
     #ajout à la fenètre
-    bt_decouverte.pack()
-    bt_rechercheStd.pack()
-    bt_rechercheAv.pack()
-    bt_affichage.pack()
-    bt_quitter.pack()
-    liste_peripheriques.pack()
+    bt_decouverte.grid(row=0,sticky=W+E)
+    bt_rechercheStd.grid(row=1,sticky=W+E)
+    bt_rechercheAv.grid(row=2,sticky=W+E)
+    bt_affichage.grid(row=3,sticky=W+E)
+    bt_quitter.grid(row=4,sticky=W+E)
+    liste_peripheriques.grid(column=1,row=0,rowspan=5)
+    
     #variable d'état
     global interfaceInitialise
     interfaceInitialise = True
