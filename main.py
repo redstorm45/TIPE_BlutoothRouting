@@ -55,9 +55,6 @@ import time
 from tkinter import *
 import tkinter.ttk as ttk
 
-
-
-
 ##  paramètres du programme
 
 # uuid des services serveur et client
@@ -73,6 +70,7 @@ peripheriquesContactables = []
 peripheriquesAdjacents = []
 #mappage réseau à partir de ce point
 mappageReseau = {}
+mappageService = {}
 #recherche
 rechercheLancees = 0
 origineRecherche = ""
@@ -332,6 +330,36 @@ def mappageDepuisListes():
     #réaffiche la liste
     majListe()
 
+def mappageServiceDepuisListe(liste):
+    """
+        ajoute les services adjacents trouvés à partir
+        d'une recherche de service à la liste
+    """
+    for item in liste:
+        add = item["host"]
+        nom = item["name"]
+        profiles = item["profiles"]
+        sid = item["service-id"]
+        classes = item["service-classes"]
+        protocol = item["protocol"]
+        port = item["port"]
+        
+        #récupère l'élement du mappage
+        if add in mappageService:
+            periph = mappageService[add]
+        else:
+            periph = []
+            mappageService[add] = periph
+        
+        #ajoute le service à la liste
+        if not (protocol,port) in [ (i["protocol"],i["port"]) for i in periph]:
+            periph.append( {"protocol"       : protocol,
+                            "name"           : nom,
+                            "profiles"       : profiles,
+                            "service-id"     : sid,
+                            "service-classes": classes,
+                            "port"           : port} )
+
 def mappageDepuisStr(str,origine):
     """
         ajoute des périphériques au réseau à partir d'une chaine de
@@ -393,14 +421,19 @@ def rechercheReseau(origine="",periph=[]):
     global enCours_rechercheReseau
     enCours_rechercheReseau = True
     majCouleurs()
+    #cherche tous les services à proximité
+    print("trouve les service")
+    services = bluetooth.find_service()
     #recherche les périphériques à proximité qui ont ce programme
-    print("trouve le service")
-    liste = bluetooth.find_service("Paquet",UUID_Serveur)
+    liste = []
+    for item in services:
+        if item["service-id"] == UUID_Serveur:
+            liste.append( item["host"] )
     print("trouvé : ",liste)
-    liste = [ i["host"] for i in liste ]
     #affecte à la liste locale
     global peripheriquesContactables
     peripheriquesContactables = liste
+    mappageServiceDepuisListe(services)
     #ajoute l'adresse actuelle à la liste
     periph.append( socketServeur.getsockname() )
     #supprime les éléments déjà inspectés
@@ -473,6 +506,7 @@ bt_decouverte = None
 bt_rechercheStd = None
 bt_rechercheAv = None
 bt_affichage = None
+bt_retransmission = None
 bt_quitter = None
 liste_peripheriques = None
 
@@ -515,6 +549,27 @@ def startRechercheReseau():
             t.daemon = True
             t.start()
         majCouleurs()
+
+def configRetransmettre():
+    """
+        ouvre une fenètre de configuration
+        de retransmission d'un service
+    """
+    fen = Tk()
+    #bouton fermer
+    fermer = Button(fen,text="fermer",command = fen.destroy )
+    listTxt = Label(fen,text="choix du périphérique\nà émuler")
+    #liste des peripheriques
+    list = Listbox(fen)
+    for i in mappageService.keys():
+        list.insert(END,i)
+    #ajustement dans la fenetre
+    fermer.grid(row=0,column=0)
+    listTxt.grid(row=1,column=0)
+    list.grid(row=1,column=1)
+    #lance la fenetre
+    t = threading.Thread(target = fen.mainloop)
+    t.start()
 
 #fonctions de mise à jour des widgets
 def majCouleurs():
@@ -563,14 +618,16 @@ def menu(fenetre):
     global bt_rechercheStd
     global bt_rechercheAv
     global bt_affichage
+    global bt_retransmission
     global bt_quitter
     global liste_peripheriques
     #création des boutons
     bt_decouverte = Button(fenetre, text = "Découverte", command = startDecouverteReseau)
     bt_rechercheStd = Button(fenetre, text = "Recherche standard", command = startRechercheStandard)
-    bt_rechercheAv = Button(fenetre, text = "Recherche avancée", command = startRechercheReseau())
+    bt_rechercheAv = Button(fenetre, text = "Recherche avancée", command = startRechercheReseau)
     bt_affichage = Button(fenetre, text = "Mappage reseau", command = lambda: afficheReseau())
-    bt_quitter = Button(fenetre, text = "Quitter", command = fenetre.quit)
+    bt_retransmission = Button(fenetre, text= "Retransmettre un service", command = configRetransmettre )
+    bt_quitter = Button(fenetre, text = "Quitter", command = fenetre.destroy)
     #création de la vue sous-forme de liste
     liste_peripheriques = ttk.Treeview(fenetre, columns = ("addresse","nom","type"),show = "headings")
     liste_peripheriques.heading("addresse",text = "adresse")
@@ -582,8 +639,9 @@ def menu(fenetre):
     bt_rechercheStd.grid(row=1,sticky=W+E)
     bt_rechercheAv.grid(row=2,sticky=W+E)
     bt_affichage.grid(row=3,sticky=W+E)
-    bt_quitter.grid(row=4,sticky=W+E)
-    liste_peripheriques.grid(column=1,row=0,rowspan=5)
+    bt_retransmission.grid(row=4,sticky=W+E)
+    bt_quitter.grid(row=5,sticky=W+E)
+    liste_peripheriques.grid(column=1,row=0,rowspan=6)
     
     #variable d'état
     global interfaceInitialise
