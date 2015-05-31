@@ -182,6 +182,87 @@ class SocketServeur(bluetooth.BluetoothSocket):
         #ferme le socket
         bluetooth.BluetoothSocket.close(self)
 
+class SocketTunnel(bluetooth.BluetoothSocket):
+    """
+        Permet la retransmission d'un service
+        dans les deux sens de communication
+    """
+    
+    def __init__(self,addOrigine,serviceInfo):
+        """
+            crée le tunnel sur le service de "addOrigine"
+        """
+        #récupère les infos
+        self.origine = addOrigine
+        
+        if serviceInfo["protocol"] == "RFCOMM":
+            self.protocole = bluetooth.RFCOMM
+        elif serviceInfo["protocol"] == "L2CAP":
+            self.protocole = bluetooth.L2CAP
+        
+        self.port = serviceInfo["port"]
+        
+        #crée un service correspondant
+        bluetooth.BluetoothSocket.__init__(self, self.protocole)
+        try:
+            self.bind( ("",bluetooth.PORT_ANY) )
+        except OSError:
+            print("[retransmission de "+self.origine+"] impossible")
+            return
+        
+        #fais de la pub
+        bluetooth.advertise_service(self,serviceInfo["name"],
+                                         serviceInfo["service-id"],
+                                         serviceInfo["service-classes"],
+                                         serviceInfo["profiles"])
+    
+    def begin(self):
+        """
+            démarre la retransmission d'information
+        """
+        #attend une connexion extérieure
+        try:
+            print("[retransmission de "+self.origine+"] en attente de connexion")
+            extSocket , addresse = self.accept()
+        except OSError:
+            return
+        #tente une connexion vers l'arrivée
+        print("[retransmission de "+self.origine+"] connexion de"+addresse)
+        socketSortie = bluetooth.BluetoothSocket( self.protocole )
+        socketSortie.connect( (self.origine,self.port) )
+        #démarre les deux sens de transmission
+        self.transArretee = False
+        transIn = threading.Thread(target=lambda: self.boucleRetrans(self,socketSortie))
+        transIn.daemon = True
+        transOut= threading.Thread(target=lambda: self.boucleRetrans(socketSortie,self))
+        transOut.daemon = True
+        transIn.start()
+        transOut.start()
+        #attend
+        while not self.transArretee:
+            time.sleep(1)
+        print("[retransmission de "+self.origine+"] arrêt de connexion")
+    
+    def boucleRetrans(self,entree,sortie):
+        """
+            retransmet des données en boucle, sans s'arrêter
+        """
+        #boucle de données
+        while not self.transArretee:
+            d = entree.recv()
+            if not d:
+                break
+            sortie.send(d)
+        self.transArretee = True
+    
+    def close(self):
+        """
+            ferme le socket
+        """
+        #ferme le socket
+        bluetooth.stop_advertising(self)
+        self.close()
+
 ## fonctions
 
 def initialisation():
@@ -510,6 +591,9 @@ bt_retransmission = None
 bt_quitter = None
 liste_peripheriques = None
 
+#addresse d'origine de la retransmission
+addresseSelectionnee = None
+
 #fonctions de lancement de threads
 def startDecouverteReseau():
     """
@@ -550,26 +634,91 @@ def startRechercheReseau():
             t.start()
         majCouleurs()
 
+def pressListRetransmettre(listePeriph,listeServices):
+    #récupère la sélection
+    if len(listePeriph.curselection()) < 1:
+        return
+    sel = listePeriph.curselection()[0]
+    add = listePeriph.get(sel)
+    #variable interne
+    global addresseSelectionnee
+    addresseSelectionnee = add
+    #màj la liste des services
+    it = mappageService[add]
+    listeServices.delete(0, listeServices.size() )
+    for s in it:
+        if s["name"]:name=s["name"].decode("utf-8")
+        else:name="None"
+        listeServices.insert(END,name+" : "+s["protocol"]+","+str(s["port"]) )
+    
+def pressBtOkRetransmettre(listePeriph,listeServices):
+    """
+        démarre la retransmission d'un service
+    """
+    #récupère le service
+    if len(listeServices.curselection()) < 1:
+        return
+    sel = int(listeServices.curselection()[0])
+    item = mappageService[addresseSelectionnee][sel]
+    print("démarre une retransmission de:")
+    print(addresseSelectionnee)
+    print("service:")
+    print(item)
+    startRetransmission(addresseSelectionnee,sel)
+
+def startRetransmission(add,num):
+    """
+        démarre un thread de retransmission,
+        avec une petite fenêtre
+    """
+    #récupère le service
+    item = mappageService[add][num]
+    #fenetre
+    fen = Toplevel()
+    info = Label(fen,text="Retransmission...")
+    info.pack()
+    info2 = Label(fen,text="origine : "+add)
+    info2.pack()
+    info3 = Label(fen,text="nom : "+item["name"].decode("utf-8"))
+    info3.pack()
+    info4 = Label(fen,text="protocole : "+item["protocol"]+" : "+str(item["port"]))
+    info4.pack()
+    #socket de retransmission
+    retrans = SocketTunnel(add,item)
+    #démarre le thread
+    t = threading.Thread(target = retrans.begin)
+    t.daemon = True
+    t.start()
+
 def configRetransmettre():
     """
         ouvre une fenètre de configuration
         de retransmission d'un service
     """
-    fen = Tk()
-    #bouton fermer
-    fermer = Button(fen,text="fermer",command = fen.destroy )
-    listTxt = Label(fen,text="choix du périphérique\nà émuler")
+    fen = Toplevel()
+    #labels
+    listTxt = Label(fen,text="choix du périphérique")
+    list2Txt = Label(fen,text="choix du service")
     #liste des peripheriques
-    list = Listbox(fen)
+    list = Listbox(fen,width=100)
     for i in mappageService.keys():
         list.insert(END,i)
+    #liste des services
+    list2 = Listbox(fen,width=100)
+    #boutons
+    validerPeriph = Button(fen,text="Choisir",command = lambda: pressListRetransmettre(list,list2))
+    annuler = Button(fen,text="Annuler",command = fen.destroy )
+    valider = Button(fen,text="Ok",command = lambda: pressBtOkRetransmettre(list,list2) )
+    #affecte le double-clic
+    list.bind("Double-Button-1",lambda: pressListRetransmettre(list,list2))
     #ajustement dans la fenetre
-    fermer.grid(row=0,column=0)
-    listTxt.grid(row=1,column=0)
-    list.grid(row=1,column=1)
-    #lance la fenetre
-    t = threading.Thread(target = fen.mainloop)
-    t.start()
+    listTxt.grid(row=0,column=0)
+    list.grid(row=0,column=1,rowspan=2,columnspan=2)
+    validerPeriph.grid(row=1,column=0)
+    list2Txt.grid(row=2,column=0)
+    list2.grid(row=2,column=1,columnspan=2)
+    annuler.grid(row=3,column=1)
+    valider.grid(row=3,column=2)
 
 #fonctions de mise à jour des widgets
 def majCouleurs():
@@ -609,7 +758,9 @@ def majListe():
             type = "normal"
             if item["avance"]:
                 type = "avancé"
-            liste_peripheriques.insert('',"end",values=(k,item["nom"],type ) )
+            liste_peripheriques.insert('',"end",values=(k,item["nom"],type ),tags=(type))
+        liste_peripheriques.tag_configure('normal', background='white')
+        liste_peripheriques.tag_configure('avancé', background='purple')
 
 #crée la fenètre
 def menu(fenetre):
@@ -626,6 +777,7 @@ def menu(fenetre):
     bt_rechercheStd = Button(fenetre, text = "Recherche standard", command = startRechercheStandard)
     bt_rechercheAv = Button(fenetre, text = "Recherche avancée", command = startRechercheReseau)
     bt_affichage = Button(fenetre, text = "Mappage reseau", command = lambda: afficheReseau())
+    bt_affichage.config(bg="grey")
     bt_retransmission = Button(fenetre, text= "Retransmettre un service", command = configRetransmettre )
     bt_quitter = Button(fenetre, text = "Quitter", command = fenetre.destroy)
     #création de la vue sous-forme de liste
