@@ -207,7 +207,10 @@ def bouclePrincipale():
     #boucle
     while socketServeur.actif:
         #attend des connections
-        extSocket , address = socketServeur.accept()
+        try:
+            extSocket , address = socketServeur.accept()
+        except OSError:
+            return
         #ajoute la connection à la liste actuelle
         socketServer.connections.append( [ address , extSocket ] )
         #démarre un thread de discussion
@@ -226,6 +229,22 @@ def rechercheStandard():
     majCouleurs()
     #effectue une recherche
     pairs = bluetooth.discover_devices()
+    #recherche les périphériques vraiment contactables
+    i = 0
+    while i<len(pairs):
+        p = pairs[i]
+        sock = bluetooth.BluetoothSocket( bluetooth.RFCOMM )
+        try:
+            sock.connect( (p , 19) )
+        except OSError:
+            print("os error on:",bluetooth.lookup_name(p),p)
+            pairs.remove(p)
+            i -= 1
+        else:
+            print("success on:",bluetooth.lookup_name(p),p)
+        finally:
+            sock.close()
+        i += 1
     #associe les noms
     periph = []
     for i in pairs:
@@ -582,8 +601,9 @@ main = threading.Thread(target = bouclePrincipale)
 main.daemon = True
 main.start()
 
-#creation de la fenetre
+#création de la fenetre
 fenetre = Tk()
+fenetre.title("Bluetooth routing")
 
 menu(fenetre)
 
