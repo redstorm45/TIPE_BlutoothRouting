@@ -52,6 +52,7 @@
 import bluetooth
 import threading
 import time
+import binascii
 from tkinter import *
 import tkinter.ttk as ttk
 
@@ -220,29 +221,33 @@ class SocketTunnel(bluetooth.BluetoothSocket):
         """
             démarre la retransmission d'information
         """
-        #attend une connexion extérieure
-        try:
-            print("[retransmission de "+self.origine+"] en attente de connexion")
-            extSocket , addresse = self.accept()
-        except OSError:
-            return
-        #tente une connexion vers l'arrivée
-        print("[retransmission de "+self.origine+"] connexion de"+addresse)
-        socketSortie = bluetooth.BluetoothSocket( self.protocole )
-        socketSortie.connect( (self.origine,self.port) )
-        #démarre les deux sens de transmission
-        self.transArretee = False
-        transIn = threading.Thread(target=lambda: self.boucleRetrans(self,socketSortie))
-        transIn.daemon = True
-        transOut= threading.Thread(target=lambda: self.boucleRetrans(socketSortie,self))
-        transOut.daemon = True
-        transIn.start()
-        transOut.start()
-        #attend
-        while not self.transArretee:
-            time.sleep(1)
-        print("[retransmission de "+self.origine+"] arrêt de connexion")
-    
+        while True:
+            #attend une connexion extérieure
+            try:
+                print("[retransmission de "+self.origine+"] en attente de connexion")
+                extSocket , addresse = self.accept()
+            except OSError:
+                return
+            #tente une connexion vers l'arrivée
+            print("[retransmission de "+self.origine+"] connexion de"+addresse)
+            socketSortie = bluetooth.BluetoothSocket( self.protocole )
+            socketSortie.connect( (self.origine,self.port) )
+            #démarre les deux sens de transmission
+            self.transArretee = False
+            transIn = threading.Thread(target=lambda: self.boucleRetrans(self,socketSortie))
+            transIn.daemon = True
+            transOut= threading.Thread(target=lambda: self.boucleRetrans(socketSortie,self))
+            transOut.daemon = True
+            transIn.start()
+            transOut.start()
+            #attend
+            while not self.transArretee:
+                time.sleep(1)
+            print("[retransmission de "+self.origine+"] arrêt de connexion")
+            #ferme les sockets
+            extSocket.close()
+            socketSortie.close()
+        
     def boucleRetrans(self,entree,sortie):
         """
             retransmet des données en boucle, sans s'arrêter
@@ -420,11 +425,21 @@ def mappageServiceDepuisListe(liste):
         add = item["host"]
         nom = item["name"]
         profiles = item["profiles"]
-        sid = item["service-id"]
+        sid = item["service-id"]            #inutile : toujours null
         classes = item["service-classes"]
         protocol = item["protocol"]
         port = item["port"]
-        
+        raw = item["rawrecord"]
+        #extrait l'uuid
+        uuid = str(binascii.hexlify( raw.split(b'\t')[3] ))[2:-1]
+        uuid = str(uuid[:8]+'-'+uuid[8:12]+'-'+uuid[12:16]+'-'+uuid[16:20]+'-'+uuid[20:32])
+        #converti en str les profiles
+        profiles = [ (str(i[0])[2:-1],i[1]) for i in profiles ]
+        #converti en str les classes
+        classes = [ str(i)[2:-1] for i in classes ]
+        #converti en str le nom
+        if nom: nom = str(nom)[2:-1]
+        else:nom = "None"
         #récupère l'élement du mappage
         if add in mappageService:
             periph = mappageService[add]
@@ -437,9 +452,11 @@ def mappageServiceDepuisListe(liste):
             periph.append( {"protocol"       : protocol,
                             "name"           : nom,
                             "profiles"       : profiles,
-                            "service-id"     : sid,
+                            "service-id"     : uuid,
                             "service-classes": classes,
                             "port"           : port} )
+            print("proto ",item["name"],"has uuid:",sid)
+            print("service id:",item["profiles"]," classes",item["service-classes"])
 
 def mappageDepuisStr(str,origine):
     """
@@ -647,9 +664,7 @@ def pressListRetransmettre(listePeriph,listeServices):
     it = mappageService[add]
     listeServices.delete(0, listeServices.size() )
     for s in it:
-        if s["name"]:name=s["name"].decode("utf-8")
-        else:name="None"
-        listeServices.insert(END,name+" : "+s["protocol"]+","+str(s["port"]) )
+        listeServices.insert(END,s["name"]+" : "+s["protocol"]+","+str(s["port"]) )
     
 def pressBtOkRetransmettre(listePeriph,listeServices):
     """
@@ -679,7 +694,7 @@ def startRetransmission(add,num):
     info.pack()
     info2 = Label(fen,text="origine : "+add)
     info2.pack()
-    info3 = Label(fen,text="nom : "+item["name"].decode("utf-8"))
+    info3 = Label(fen,text="nom : "+item["name"])
     info3.pack()
     info4 = Label(fen,text="protocole : "+item["protocol"]+" : "+str(item["port"]))
     info4.pack()
