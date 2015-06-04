@@ -88,16 +88,26 @@ class SocketServeur(bluetooth.BluetoothSocket):
         """
             Permet de créer un socket serveur
         """
-        # initialise un socket RFCOMM
-        bluetooth.BluetoothSocket.__init__( self, bluetooth.RFCOMM )
-        # applique le socket sur le premier adaptateur trouvé,
-        # et le premier port libre
-        self.bind( ("",bluetooth.PORT_ANY) )
-        # commence l'écoute sur le port, avec une connection
-        # en file d'attente au maximum
-        self.listen(1)
-        # averti le serveur SDP de la présence du serveur
-        bluetooth.advertise_service( self, "Paquet",uuid,[uuid])
+        try:
+            # initialise un socket RFCOMM
+            bluetooth.BluetoothSocket.__init__( self, bluetooth.RFCOMM )
+            # applique le socket sur le premier adaptateur trouvé,
+            # et le premier port libre
+            self.bind( ("",bluetooth.PORT_ANY) )
+            # commence l'écoute sur le port, avec une connection
+            # en file d'attente au maximum
+            self.listen(1)
+            # averti le serveur SDP de la présence du serveur
+            bluetooth.advertise_service( self, "Paquet",uuid,[uuid])
+            #variable interne
+            self.creationReussie = True
+        except OSError:
+            #erreur dûe à pybluez (pas très descriptive...)
+            #variable interne
+            self.creationReussie = False
+            #defini une valeure bidon d'addresse de serveur
+            self.getsockname = lambda: ("XX:XX:XX:XX:XX:XX",0)
+            return
         #initialise la liste des connections
         self.connections = []
         #variable interne
@@ -278,7 +288,11 @@ def initialisation():
     """
     socketServeur = SocketServeur(UUID_Serveur)
     
-    print("addresse du serveur : ",socketServeur.getsockname() )
+    if socketServeur.creationReussie:
+        print("addresse du serveur : ",socketServeur.getsockname() )
+    else:
+        print("création du socket serveur impossible")
+        print("avez vous allumé votre adaptateur bluetooth?")
     
 def bouclePrincipale():
     """
@@ -413,6 +427,12 @@ def mappageDepuisListes():
             item["liens"] = mappageReseau[p]["liens"]
         #ajout au mappage
         mappageReseau[p] = item
+    #représentationdu point de départ
+    add = socketServeur.getsockname()[0]
+    mappageReseau[add] = {"nom": "origine",
+                          "direct": True,
+                          "avance": True,
+                          "liens": peripheriquesAdjacents[:]}
     #réaffiche la liste
     majListe()
 
@@ -586,8 +606,76 @@ def reponseRecherche(origine,items):
     for i in items:
         mappageDepuisStr(i,origine)
 
-def afficheReseau():
-    pass
+def extraitAddresses(carte):
+    """
+        extrait toute les adresses présentes sur
+        une carte sous forme de liste
+        
+        exemple:
+           pour carte = 
+             { "<add1>" : { "<add2>" : {},
+                            "<add3>" : {}},
+               "<add4>" : { "<add5>" : {},
+                            "<add6>" : {},
+                            "<add7>" : {}}}
+          donne: ["<add1>","<add2>", ... ,"<add7>"]
+    """
+    listeAdd = []
+    for k in carte.keys():
+        listeAdd.append(k)
+        listeAdd.extend( extraitAddresses(carte[k]) )
+    return listeAdd
+
+def carteSimplifiee(depart=None,interdits=[]):
+    """
+        crée à partir de "mappageReseau" une carte
+        partant du point de départ sans inclure les interdits
+        
+        /!\ n'inclut que les périphériques avancés (avec programme)
+        
+        exemple:
+        
+          réseau:
+                              __________________ add5 __
+                   add2 \    /                   /      \
+                          add1 --- départ --- add4 --- add6
+                   add3 /                        \
+                                                add7
+                                                
+        forme de la liste:
+             { "<add1>" : { "<add2>" : {},
+                            "<add3>" : {}},
+               "<add4>" : { "<add5>" : {},
+                            "<add6>" : {},
+                            "<add7>" : {}}}
+    """
+    #récupère l'adresse du serveur actuel
+    add = socketServeur.getsockname()[0]
+    if not depart:
+        depart = add
+    #copie les interdits, pour ne pas les modifier
+    interdits2 = interdits[:]
+    interdits2.append( add )
+    #récupère les liens actuels
+    liens = mappageReseau[depart]["liens"]
+    #crée le dictionnaire à retourner
+    connexions = {}
+    #parcoure le mappage réseau
+    for l in liens:
+        if mappageReseau[l]["avance"]:
+            #actualise les interdits pour cette recherche
+            interditsActuels = interdits2[:]
+            liensMod = liens[:]
+            liensMod.remove(l)
+            interditsActuels.extend(liensMod)
+            #démarre une nouvelle recherche à partir de l
+            carteL = carteSimplifiee(l,interditsActuels)
+            #ajout au dictionnaire
+            connexions[l] = carteL
+            #ajout des adresses parcourues aux interdits
+            interdits2.extend( extraitAddresses(carteL) )
+    #retourne la carte
+    return connexions
 
 ## Interface graphique
 
@@ -611,12 +699,20 @@ liste_peripheriques = None
 #addresse d'origine de la retransmission
 addresseSelectionnee = None
 
+def afficheReseau():
+    """
+        affiche une carte du réseau
+    """
+    #récupère la carte simplifiée des noeuds
+    carte = carteSimplifiee()
+    print(carte)
+    
 #fonctions de lancement de threads
 def startDecouverteReseau():
     """
         démarre un thread de découverte du réseau
     """
-    if interfaceInitialise:
+    if interfaceInitialise and socketServeur.creationReussie:
         global enCours_decouverteReseau
         if not enCours_decouverteReseau:
             enCours_decouverteReseau = True
@@ -629,7 +725,7 @@ def startRechercheStandard():
     """
         démarre un thread de recherche standard
     """
-    if interfaceInitialise:
+    if interfaceInitialise and socketServeur.creationReussie:
         global enCours_rechercheStandard
         if not enCours_rechercheStandard:
             enCours_rechercheStandard = True
@@ -642,7 +738,7 @@ def startRechercheReseau():
     """
         démarre un thread de recherche réseau
     """
-    if interfaceInitialise:
+    if interfaceInitialise and socketServeur.creationReussie:
         global enCours_rechercheReseau
         if not enCours_rechercheReseau:
             enCours_rechercheReseau = True
@@ -773,9 +869,14 @@ def majListe():
             type = "normal"
             if item["avance"]:
                 type = "avancé"
+                
+            if item["nom"] == "origine":
+                type = "départ"
+                
             liste_peripheriques.insert('',"end",values=(k,item["nom"],type ),tags=(type))
         liste_peripheriques.tag_configure('normal', background='white')
         liste_peripheriques.tag_configure('avancé', background='purple')
+        liste_peripheriques.tag_configure('départ', background='blue')
 
 #crée la fenètre
 def menu(fenetre):
