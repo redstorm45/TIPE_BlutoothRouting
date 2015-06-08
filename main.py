@@ -53,6 +53,8 @@ import bluetooth
 import threading
 import time
 import binascii
+import math
+import os
 from tkinter import *
 import tkinter.ttk as ttk
 
@@ -626,12 +628,37 @@ def extraitAddresses(carte):
         listeAdd.extend( extraitAddresses(carte[k]) )
     return listeAdd
 
+def extraitNiveau(carte,add):
+    """
+        donne le niveau de distance d'une adresse
+        au point de départ de la carte
+        
+        exemple:
+           pour carte = 
+             { "<add1>" : { "<add2>" : {},
+                            "<add3>" : {}},
+               "<add4>" : { "<add5>" : {},
+                            "<add6>" : {},
+                            "<add7>" : {}}}
+          donne: "<add1>" -> 1
+                 "<add2>" -> 2
+                 "<add3>" -> 2
+                 
+                 etc...
+    """
+    #si add de niveau 1
+    if add in carte.keys():
+        return 1
+    #sinon, récursion
+    else:
+        for p in carte.keys():
+            if add in extraitAddresses(carte[p]):
+                return extraitNiveau( carte[p] , add )+1
+
 def carteSimplifiee(depart=None,interdits=[]):
     """
         crée à partir de "mappageReseau" une carte
         partant du point de départ sans inclure les interdits
-        
-        /!\ n'inclut que les périphériques avancés (avec programme)
         
         exemple:
         
@@ -674,6 +701,10 @@ def carteSimplifiee(depart=None,interdits=[]):
             connexions[l] = carteL
             #ajout des adresses parcourues aux interdits
             interdits2.extend( extraitAddresses(carteL) )
+        else:
+            if not l in interdits2[:]:
+                connexions[l] = {}
+                interdits2.append(l)
     #retourne la carte
     return connexions
 
@@ -703,9 +734,56 @@ def afficheReseau():
     """
         affiche une carte du réseau
     """
-    #récupère la carte simplifiée des noeuds
+    #paramètres du dessin de la carte
+    rayonCarte = 200
+    tailleFenetre = 500
+    #récupère la carte simplifiée
     carte = carteSimplifiee()
     print(carte)
+    #crée les listes
+    noeuds = {}
+    liens = []
+    #recupère les points
+    points = { 0:"origine" }
+    maxdist = 0
+    for p in extraitAddresses(carte):
+        dist = extraitNiveau(carte,p)
+        if not dist in points.keys():
+            points[dist] = []
+            if maxdist < dist:
+                maxdist = dist
+        points[dist].append(p)
+    #place les noeuds
+    for d in points.keys():
+        nb = len( points[d] )
+        if maxdist != 0:
+            rayon = rayonCarte*d/maxdist
+        else:
+            rayon = 0
+        for i in range(nb):
+            posX = rayon*math.cos( i *2*math.pi / nb )
+            posY = rayon*math.sin( i *2*math.pi / nb )
+            noeuds[points[d][i] ] = ( posX, posY )
+    #attribue les liens
+    for p in noeuds.keys():
+        px,py = noeuds[p]
+        l = mappageReseau[p]["liens"]
+        if (not (l,p) in liens) and (not (p,l) in liens):
+            liens.append((l,p))
+    #crée la fenetre
+    fen = Toplevel()
+    fen.title("Carte du réseau")
+    canvas = Canvas(fenetre)
+    #ajoute les liens
+    for a,b in liens:
+        x1,y1 = noeuds[a]
+        x2,y2 = noeuds[b]
+        canvas.create_line(x1,y1,x2,y2,fill="black",width=3)
+    #ajoute les noeuds
+    for n in noeuds.keys():
+        x,y = noeuds[n]
+        texte = Label(canvas,text = n)
+        texte.place(relx=x,rely=y,anchor=CENTER)
     
 #fonctions de lancement de threads
 def startDecouverteReseau():
@@ -916,7 +994,58 @@ def menu(fenetre):
     interfaceInitialise = True
     #affichage à l'écran
     fenetre.mainloop()
+
+## débogguage
+
+def debugSauve():
+    """
+        permet de sauvegarder la carte
+        dans un fichier texte
+    """
+    os.chdir("C:/Users/Pierre/Documents/Fichiers Importants/TIPE/TIPE_BlutoothRouting")
+    nomFichier = input("nom de la sauvegarde:")
+    if not nomFichier.endswith(".txt"):
+        nomFichier += ".txt"
+    try:
+        fichier = open(nomFichier,"w")
+        fichier.write( str(mappageReseau) )
+    except:
+        print("erreur pendant l'ouverture du fichier")
+    finally:
+        fichier.close()
+   
+def debugCharge():
+    """
+        permet de charger la carte
+        depuis un fichier texte
+    """
+    os.chdir("C:/Users/Pierre/Documents/Fichiers Importants/TIPE/TIPE_BlutoothRouting")
+    nomFichier = input("nom de la sauvegarde:")
+    if not nomFichier.endswith(".txt"):
+        nomFichier += ".txt"
+    try:
+        fichier = open(nomFichier,"r")
+        mappageReseau = eval( fichier.read() )
+    except:
+        print("erreur pendant l'ouverture du fichier")
+    finally:
+        fichier.close() 
+
+def debugFenetre():
+    """
+        crée une fenêtre de configuration du débogguage
+    """
+    #fenetre
+    fen = Toplevel()
+    fen.title("Débogguage")
+    #boutons
+    sauve = Button(fen,text="Sauvegarder",command=debugSauve)   #sauve le réseau
+    charge = Button(fen,text="Charger",command=debugCharge)     #charge la carte
+    #package
+    sauve.pack()
+    charge.pack()
     
+
 ## début du programme
 
 #démarre le serveur
@@ -930,6 +1059,9 @@ main.start()
 #création de la fenetre
 fenetre = Tk()
 fenetre.title("Bluetooth routing")
+
+#fenêtre de débogguage
+debugFenetre()
 
 menu(fenetre)
 
