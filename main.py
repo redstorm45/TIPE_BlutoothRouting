@@ -682,27 +682,30 @@ def carteSimplifiee(depart=None,interdits=[]):
         depart = add
     #copie les interdits, pour ne pas les modifier
     interdits2 = interdits[:]
-    interdits2.append( add )
+    interdits2.append( depart )
+    interdits2 = list(set(interdits2))
     #récupère les liens actuels
     liens = mappageReseau[depart]["liens"]
     #crée le dictionnaire à retourner
     connexions = {}
     #parcoure le mappage réseau
     for l in liens:
-        if mappageReseau[l]["avance"]:
-            #actualise les interdits pour cette recherche
-            interditsActuels = interdits2[:]
-            liensMod = liens[:]
-            liensMod.remove(l)
-            interditsActuels.extend(liensMod)
-            #démarre une nouvelle recherche à partir de l
-            carteL = carteSimplifiee(l,interditsActuels)
-            #ajout au dictionnaire
-            connexions[l] = carteL
-            #ajout des adresses parcourues aux interdits
-            interdits2.extend( extraitAddresses(carteL) )
-        else:
-            if not l in interdits2[:]:
+        if not l in interdits2[:]:
+            if mappageReseau[l]["avance"]:
+                #actualise les interdits pour cette recherche
+                interditsActuels = interdits2[:]
+                liensMod = liens[:]
+                liensMod.remove(l)
+                interditsActuels.extend(liensMod)
+                interditsActuels = list(set(interditsActuels))
+                #démarre une nouvelle recherche à partir de l
+                carteL = carteSimplifiee(l,interditsActuels)
+                #ajout au dictionnaire
+                connexions[l] = carteL
+                #ajout des adresses parcourues aux interdits
+                interdits2.extend( extraitAddresses(carteL) )
+                interdits2 = list(set(interdits2))
+            else:
                 connexions[l] = {}
                 interdits2.append(l)
     #retourne la carte
@@ -735,16 +738,15 @@ def afficheReseau():
         affiche une carte du réseau
     """
     #paramètres du dessin de la carte
-    rayonCarte = 200
+    rayonCarte = 220
     tailleFenetre = 500
     #récupère la carte simplifiée
     carte = carteSimplifiee()
-    print(carte)
     #crée les listes
     noeuds = {}
     liens = []
     #recupère les points
-    points = { 0:"origine" }
+    points = { 0:[socketServeur.getsockname()[0]] }
     maxdist = 0
     for p in extraitAddresses(carte):
         dist = extraitNiveau(carte,p)
@@ -756,34 +758,68 @@ def afficheReseau():
     #place les noeuds
     for d in points.keys():
         nb = len( points[d] )
+        if nb%2 == 0: nb += 1 #ajout d'un pt si nombre impaire pour tracer
         if maxdist != 0:
             rayon = rayonCarte*d/maxdist
         else:
             rayon = 0
-        for i in range(nb):
-            posX = rayon*math.cos( i *2*math.pi / nb )
-            posY = rayon*math.sin( i *2*math.pi / nb )
+            
+        #trouve la plus petite somme de distance de liens
+        #avec 8 valeurs de rotation ajoutée ( tt les PI/4 )
+        sommeMin = math.tan(math.pi/2)
+        offsetChoisi = 0
+        if d !=0:
+            for offset in range(8):
+                angleOffset = offset * math.pi/4
+                sommeDist = 0
+                for i in range(len( points[d] )):
+                    posX = rayon*math.cos( i *2*math.pi / nb + angleOffset + 0.19)
+                    posY = rayon*math.sin( i *2*math.pi / nb + angleOffset + 0.19)
+                    add = points[d][i]
+                    for l in mappageReseau[add]["liens"]:
+                        if l in noeuds.keys():
+                            dX = posX - noeuds[l][0]
+                            dY = posY - noeuds[l][1]
+                            sommeDist += dX**2 + dY**2
+                if sommeDist < sommeMin:
+                    sommeMin = sommeDist
+                    offsetChoisi = angleOffset
+        
+        #affecte les positions choisies aux noeuds
+        for i in range(len( points[d] )):
+            posX = rayon*math.cos( i *2*math.pi / nb + offsetChoisi + 0.19)
+            posY = rayon*math.sin( i *2*math.pi / nb + offsetChoisi + 0.19)
             noeuds[points[d][i] ] = ( posX, posY )
     #attribue les liens
     for p in noeuds.keys():
         px,py = noeuds[p]
-        l = mappageReseau[p]["liens"]
-        if (not (l,p) in liens) and (not (p,l) in liens):
-            liens.append((l,p))
+        for i in mappageReseau[p]["liens"]:
+            if (not (i,p) in liens) and (not (p,i) in liens):
+                liens.append((i,p))
     #crée la fenetre
     fen = Toplevel()
     fen.title("Carte du réseau")
-    canvas = Canvas(fenetre)
+    canvas = Canvas(fen,width=tailleFenetre,height=tailleFenetre)
+    canvas.pack()
     #ajoute les liens
     for a,b in liens:
         x1,y1 = noeuds[a]
         x2,y2 = noeuds[b]
-        canvas.create_line(x1,y1,x2,y2,fill="black",width=3)
+        canvas.create_line(x1+tailleFenetre//2-60,y1+tailleFenetre//2,
+                           x2+tailleFenetre//2-60,y2+tailleFenetre//2,
+                           fill="black",width=3)
     #ajoute les noeuds
     for n in noeuds.keys():
         x,y = noeuds[n]
-        texte = Label(canvas,text = n)
-        texte.place(relx=x,rely=y,anchor=CENTER)
+        x += tailleFenetre//2
+        y += tailleFenetre//2
+        color = "white"
+        if mappageReseau[n]["nom"] == "origine":
+            color = "blue"
+        elif mappageReseau[n]["avance"]:
+            color = "purple"
+        canvas.create_rectangle(x-70,y-10,x-50,y+10,fill = color)
+        canvas.create_text(x,y,text=n)
     
 #fonctions de lancement de threads
 def startDecouverteReseau():
@@ -1019,6 +1055,7 @@ def debugCharge():
         permet de charger la carte
         depuis un fichier texte
     """
+    global mappageReseau
     os.chdir("C:/Users/Pierre/Documents/Fichiers Importants/TIPE/TIPE_BlutoothRouting")
     nomFichier = input("nom de la sauvegarde:")
     if not nomFichier.endswith(".txt"):
@@ -1030,6 +1067,15 @@ def debugCharge():
         print("erreur pendant l'ouverture du fichier")
     finally:
         fichier.close() 
+    #update addresse du serveur
+    socketServeur.creationReussie = False
+    add = "XX:XX:XX:XX:XX:XX"
+    for i in mappageReseau.keys():
+        if mappageReseau[i]["nom"] == "origine":
+            add = i
+    socketServeur.getsockname = lambda: (add,0)
+    #update fenetre
+    majListe()
 
 def debugFenetre():
     """

@@ -1,1 +1,1 @@
-{'18:67:B0:92:42:CD': {'nom': 'origine', 'avance': True, 'direct': True, 'liens': ['4C:21:D0:A6:8A:1E']}, '4C:21:D0:A6:8A:1E': {'nom': 'Pierre phone', 'avance': False, 'direct': True, 'liens': []}}
+{'18:67:B0:92:42:CD': {'nom': 'origine', 'avance': True, 'direct': True, 'liens': ['4C:21:D0:A6:8A:1E']}, '4C:21:D0:A6:8A:1E': {'nom': 'Telephone', 'avance': False, 'direct': True, 'liens': []}}
