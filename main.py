@@ -54,7 +54,7 @@ import threading
 import time
 import binascii
 import math
-import os
+import os,sys
 from tkinter import *
 import tkinter.ttk as ttk
 
@@ -109,6 +109,8 @@ class SocketServeur(bluetooth.BluetoothSocket):
             self.creationReussie = False
             #defini une valeure bidon d'addresse de serveur
             self.getsockname = lambda: ("XX:XX:XX:XX:XX:XX",0)
+            #variable interne
+            self.actif = True
             return
         #initialise la liste des connections
         self.connections = []
@@ -1007,7 +1009,6 @@ def menu(fenetre):
     bt_rechercheStd = Button(fenetre, text = "Recherche standard", command = startRechercheStandard)
     bt_rechercheAv = Button(fenetre, text = "Recherche avancée", command = startRechercheReseau)
     bt_affichage = Button(fenetre, text = "Mappage reseau", command = lambda: afficheReseau())
-    bt_affichage.config(bg="grey")
     bt_retransmission = Button(fenetre, text= "Retransmettre un service", command = configRetransmettre )
     bt_quitter = Button(fenetre, text = "Quitter", command = fenetre.destroy)
     #création de la vue sous-forme de liste
@@ -1038,7 +1039,8 @@ def debugSauve():
         permet de sauvegarder la carte
         dans un fichier texte
     """
-    os.chdir("C:/Users/Pierre/Documents/Fichiers Importants/TIPE/TIPE_BlutoothRouting")
+    path = os.path.abspath(os.path.dirname(sys.argv[0]))
+    os.chdir(path.replace("\\","/"))
     nomFichier = input("nom de la sauvegarde:")
     if not nomFichier.endswith(".txt"):
         nomFichier += ".txt"
@@ -1056,7 +1058,8 @@ def debugCharge():
         depuis un fichier texte
     """
     global mappageReseau
-    os.chdir("C:/Users/Pierre/Documents/Fichiers Importants/TIPE/TIPE_BlutoothRouting")
+    path = os.path.abspath(os.path.dirname(sys.argv[0]))
+    os.chdir(path.replace("\\","/"))
     nomFichier = input("nom de la sauvegarde:")
     if not nomFichier.endswith(".txt"):
         nomFichier += ".txt"
